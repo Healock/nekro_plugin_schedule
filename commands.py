@@ -55,6 +55,18 @@ async def wake_up(_context: CommandExecutionContext) -> CommandResponse:
     description="进入休眠状态。需在 TRANSITION 状态且保护期结束后使用。",
 )
 async def go_to_sleep(_ctx: AgentCtx) -> str:
+    """进入全局休眠状态并暂停当前处于 ACTIVE 的频道。
+
+    调用条件：当前作息状态必须为 TRANSITION，且保护期已经结束。
+    调用成功后会记录当日休眠状态，并同步 OneBot 在线状态。
+
+    Returns:
+        str: 进入休眠状态后的确认信息。
+
+    Raises:
+        RuntimeError: 当前不在可休眠状态、仍处于保护期，或状态同步失败。
+    """
+
     if runtime_status.current_state != ChatState.TRANSITION:
         raise RuntimeError("当前不在可休眠状态。")
     remaining = runtime_status.protection_until - time.time()
@@ -84,6 +96,18 @@ async def go_to_sleep(_ctx: AgentCtx) -> str:
     description="延后 go_to_sleep 指令指定分钟数。",
 )
 async def adjust_sleep_time(_ctx: AgentCtx, delay_minutes: int) -> str:
+    """延后进入休眠的时间并更新保护期。
+
+    Args:
+        delay_minutes: 延后休眠的分钟数，必须为正整数。
+
+    Returns:
+        str: 休眠延后后的确认信息。
+
+    Raises:
+        ValueError: ``delay_minutes`` 不是正数。
+    """
+
     if delay_minutes <= 0:
         raise ValueError("延后时长必须为正值。")
     runtime_status.protection_until = time.time() + delay_minutes * 60
