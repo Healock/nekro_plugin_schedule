@@ -67,7 +67,15 @@ class ScheduleCalculationTests(unittest.TestCase):
         forced = schedule_calc.calculate_schedule(now, CONFIG, ChatState.NORMAL, None, None, ChatState.SILENT)
         persisted = schedule_calc.calculate_schedule(now, CONFIG, ChatState.NORMAL, "2026-09-07", None)
         self.assertEqual(forced.target_state, ChatState.SILENT)
-        self.assertEqual(persisted.target_state, ChatState.SILENT)
+        self.assertEqual(persisted.target_state, ChatState.LOW_ACT)
+
+    def test_sleep_marker_does_not_block_active_period(self):
+        now = datetime(2026, 9, 7, 12, 0)
+        decision = schedule_calc.calculate_schedule(
+            now, CONFIG, ChatState.SILENT, "2026-09-07", None,
+        )
+        self.assertEqual(decision.computed_state, ChatState.LOW_ACT)
+        self.assertEqual(decision.target_state, ChatState.LOW_ACT)
 
 
 if __name__ == "__main__":
