@@ -13,7 +13,7 @@ from .state_model import FORCE_AWAKE_DATE_KEY, LAST_SLEEP_DATE_KEY, ChatState
     name="wake_up",
     description="手动唤醒",
     aliases=["wakeup", "强制唤醒"],
-    permission=CommandPermission.SUPER_USER,
+    permission=CommandPermission.ADVANCED,
     category="行为控制",
 )
 async def wake_up(_context: CommandExecutionContext) -> CommandResponse:
