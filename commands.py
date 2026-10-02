@@ -16,9 +16,10 @@ from .state_model import FORCE_AWAKE_DATE_KEY, LAST_SLEEP_DATE_KEY, ChatState
     permission=CommandPermission.ADVANCED,
     category="行为控制",
 )
-async def wake_up(_context: CommandExecutionContext) -> CommandResponse:
+async def wake_up(context: CommandExecutionContext) -> CommandResponse:
     """清除当日休眠标记并唤醒。"""
 
+    del context
     try:
         previous_sleep_date = await plugin.store.get(
             chat_key="GLOBAL", user_key="", store_key=LAST_SLEEP_DATE_KEY
