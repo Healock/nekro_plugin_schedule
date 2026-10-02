@@ -62,6 +62,20 @@ class ScheduleCalculationTests(unittest.TestCase):
         )
         self.assertEqual(decision.target_state, ChatState.LOW_ACT)
 
+    def test_battery_status_represents_schedule_progress(self):
+        start = schedule_calc.calculate_schedule(
+            datetime(2026, 9, 7, 10, 0), CONFIG, ChatState.TRANSITION, None, None,
+        )
+        end = schedule_calc.calculate_schedule(
+            datetime(2026, 9, 7, 21, 30), CONFIG, ChatState.LOW_ACT, None, None,
+        )
+        after = schedule_calc.calculate_schedule(
+            datetime(2026, 9, 7, 22, 0), CONFIG, ChatState.LOW_ACT, None, None,
+        )
+        self.assertEqual(start.battery_status, 100)
+        self.assertEqual(end.battery_status, 0)
+        self.assertEqual(after.battery_status, 0)
+
     def test_explicit_sleep_is_silent(self):
         now = datetime(2026, 9, 7, 12, 0)
         forced = schedule_calc.calculate_schedule(now, CONFIG, ChatState.NORMAL, None, None, ChatState.SILENT)

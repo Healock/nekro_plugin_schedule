@@ -45,7 +45,7 @@ async def update_global_physical_status(forced_state: ChatState | str | None = N
     previous_state = runtime_status.current_state
     should_sync = (
         decision.target_state != previous_state
-        or now.timestamp() - runtime_status.last_sync_ts > 300
+        or now.timestamp() - runtime_status.last_sync_ts >= max(1, config.status_sync_interval)
         or forced_state is not None
     )
     if not should_sync:
