@@ -55,11 +55,12 @@ async def update_global_physical_status(forced_state: ChatState | str | None = N
         return False
 
     channels_ok = True
-    if decision.target_state != previous_state:
-        if decision.target_state == ChatState.SILENT:
+    if decision.target_state == ChatState.SILENT:
+        if decision.target_state != previous_state:
             channels_ok = await pause_active_channels()
-        elif previous_state == ChatState.SILENT:
-            channels_ok = await resume_paused_channels()
+    else:
+        # 频道暂停记录持久化于插件存储，不能依赖重启后丢失的进程内状态。
+        channels_ok = await resume_paused_channels()
 
     if not channels_ok:
         await sync_online_status(previous_state, runtime_status.battery_status)

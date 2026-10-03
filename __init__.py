@@ -8,7 +8,7 @@ plugin = NekroPlugin(
     name="作息调度器",
     module_name="nekro_plugin_schedule",
     description="根据时间段调整在线状态，并在休眠时切换频道观察模式。",
-    version="1.0.6",
+    version="1.0.7",
     author="Healock",
     url="https://github.com/Healock/nekro_plugin_schedule",
 )
