@@ -1,5 +1,6 @@
 """频道 ACTIVE/OBSERVE 状态切换与兼容存储。"""
 
+import importlib
 import json
 from collections.abc import Iterable
 from typing import Any
@@ -23,6 +24,30 @@ def _decode_chat_keys(value: Any) -> list[str]:
     return [item for item in value if isinstance(item, str) and item]
 
 
+async def _invalidate_debounce_channel(chat_key: str) -> None:
+    """在进入 OBSERVE 前通知可选的 debounce 插件丢弃旧批次。
+
+    调度器不能依赖 debounce 插件存在；导入失败或插件当前不可用时仍
+    继续切换频道，debounce 自身的 release gate 会再次读取频道状态。
+    """
+
+    try:
+        debounce = importlib.import_module("nekro_plugin_debounce")
+        invalidate_channel = getattr(debounce, "invalidate_channel", None)
+    except (ImportError, ModuleNotFoundError):
+        return
+    except Exception as exc:
+        core.logger.warning(f"[频道接管] 读取 debounce 失效入口失败 chat_key={chat_key}：{exc}")
+        return
+    if not callable(invalidate_channel):
+        return
+    try:
+        await invalidate_channel(chat_key, reason="schedule_observe")
+    except Exception as exc:
+        # OBSERVE 状态仍必须落库；release gate 会在竞态下 fail-closed。
+        core.logger.warning(f"[频道接管] debounce 批次失效失败 chat_key={chat_key}：{exc}")
+
+
 async def pause_active_channels() -> bool:
     """将 ACTIVE 频道切换为 OBSERVE；部分失败时回滚已变更频道。"""
 
@@ -36,6 +61,7 @@ async def pause_active_channels() -> bool:
     changed_channels: list[DBChatChannel] = []
     for channel in active_channels:
         try:
+            await _invalidate_debounce_channel(channel.chat_key)
             await channel.set_channel_status(ChannelStatus.OBSERVE)
         except (BaseORMException, ValueError, RuntimeError, AttributeError) as exc:
             core.logger.error(f"[频道接管] 暂停频道失败 chat_key={channel.chat_key}：{exc}")
