@@ -49,12 +49,12 @@ class ScheduleCalculationTests(unittest.TestCase):
         )
         self.assertEqual(decision.target_state, ChatState.NORMAL)
 
-    def test_explicit_sleep_survives_midnight(self):
+    def test_previous_sleep_date_does_not_keep_silent(self):
         decision = schedule_calc.calculate_schedule(
             datetime(2026, 9, 8, 0, 0), CONFIG, ChatState.SILENT, "2026-09-07", None,
         )
         self.assertEqual(decision.computed_state, ChatState.TRANSITION)
-        self.assertEqual(decision.target_state, ChatState.SILENT)
+        self.assertEqual(decision.target_state, ChatState.TRANSITION)
 
     def test_morning_recovers_from_transition(self):
         decision = schedule_calc.calculate_schedule(
