@@ -55,11 +55,11 @@ async def update_global_physical_status(forced_state: ChatState | str | None = N
         return False
 
     channel_result: ChannelSwitchResult | bool | None = None
-    if decision.target_state != previous_state:
-        if decision.target_state == ChatState.SILENT:
-            channel_result = await pause_active_channels()
-        elif previous_state == ChatState.SILENT:
-            channel_result = await resume_paused_channels()
+    if decision.target_state == ChatState.SILENT and decision.target_state != previous_state:
+        channel_result = await pause_active_channels()
+    elif decision.target_state in (ChatState.NORMAL, ChatState.LOW_ACT):
+        # 每次巡检同步时都修复残留 OBSERVE，覆盖重启、手动切换和 force 扫描。
+        channel_result = await resume_paused_channels(config.channel_resume_mode)
 
     channel_success = (
         channel_result.success

@@ -32,6 +32,7 @@ class _Plugin:
 class _ChannelStatus(StrEnum):
     ACTIVE = "active"
     OBSERVE = "observe"
+    DISABLED = "disabled"
 
 
 class _Channel:
@@ -204,6 +205,36 @@ class ChannelStateTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(second.success)
         self.assertEqual(calls, [])
         self.assertEqual(channel.channel_status, ChannelStatus.ACTIVE)
+
+    async def test_managed_resume_only_restores_recorded_channels(self):
+        managed = _Channel("managed", ChannelStatus.OBSERVE)
+        manual = _Channel("manual", ChannelStatus.OBSERVE)
+        DBChatChannel.channels = [managed, manual]
+        plugin.store.values["sleep_paused_channels"] = '["managed"]'
+        result = await channel_state.resume_paused_channels("managed")
+        self.assertTrue(result.success)
+        self.assertEqual(managed.channel_status, ChannelStatus.ACTIVE)
+        self.assertEqual(manual.channel_status, ChannelStatus.OBSERVE)
+
+    async def test_force_resume_skips_disabled_and_clears_records(self):
+        observed = _Channel("observed", ChannelStatus.OBSERVE)
+        disabled = _Channel("disabled", ChannelStatus.DISABLED)
+        DBChatChannel.channels = [observed, disabled]
+        plugin.store.values["sleep_paused_channels"] = '["manual"]'
+        result = await channel_state.resume_paused_channels("force")
+        self.assertTrue(result.success)
+        self.assertEqual(observed.channel_status, ChannelStatus.ACTIVE)
+        self.assertEqual(disabled.channel_status, ChannelStatus.DISABLED)
+        self.assertEqual(plugin.store.values["sleep_paused_channels"], "[]")
+
+    async def test_force_resume_rolls_back_on_failure(self):
+        first = _Channel("first", ChannelStatus.OBSERVE)
+        second = _Channel("second", ChannelStatus.OBSERVE, fail=True)
+        DBChatChannel.channels = [first, second]
+        plugin.store.values["sleep_paused_channels"] = '["first"]'
+        result = await channel_state.resume_paused_channels("force")
+        self.assertFalse(result.success)
+        self.assertEqual(first.channel_status, ChannelStatus.OBSERVE)
 
     async def test_repeated_pause_preserves_persisted_keys(self):
         channel = _Channel("active-1", ChannelStatus.ACTIVE)
