@@ -88,8 +88,12 @@ async def pause_active_channels() -> bool:
     return True
 
 
-async def resume_paused_channels() -> bool:
-    """恢复休眠前由插件切换的频道；部分失败时回滚已恢复频道。"""
+async def resume_paused_channels(mode: str = "managed") -> bool:
+    """恢复频道；managed 只恢复记录，force 恢复所有非 DISABLED 频道。"""
+
+    if mode not in {"managed", "force"}:
+        core.logger.warning(f"[频道接管] 未知恢复模式 {mode}，使用 managed")
+        mode = "managed"
 
     try:
         value = await plugin.store.get(
@@ -102,17 +106,36 @@ async def resume_paused_channels() -> bool:
         return False
 
     paused_keys = _decode_chat_keys(value)
-    if not paused_keys:
-        return True
+    if mode == "force":
+        try:
+            channels = await DBChatChannel.all()
+        except BaseORMException as exc:
+            core.logger.error(f"[频道接管] 查询待恢复频道失败：{exc}")
+            return False
+        disabled = getattr(ChannelStatus, "DISABLED", None)
+        candidates = [channel for channel in channels if channel.channel_status != disabled]
+    else:
+        if not paused_keys:
+            return True
+        candidates = []
+        failed = False
+        for chat_key in paused_keys:
+            try:
+                channel = await DBChatChannel.get_channel(chat_key=chat_key)
+            except (BaseORMException, ValueError, RuntimeError, AttributeError) as exc:
+                core.logger.error(f"[频道接管] 查找暂停频道失败 chat_key={chat_key}：{exc}")
+                failed = True
+                continue
+            if channel is not None:
+                candidates.append(channel)
+        if failed:
+            return False
 
     changed_channels: list[DBChatChannel] = []
     failed = False
-    for chat_key in paused_keys:
-        try:
-            channel = await DBChatChannel.get_channel(chat_key=chat_key)
-        except (BaseORMException, ValueError, RuntimeError, AttributeError) as exc:
-            core.logger.error(f"[频道接管] 查找暂停频道失败 chat_key={chat_key}：{exc}")
-            failed = True
+    for channel in candidates:
+        chat_key = channel.chat_key
+        if channel.channel_status == getattr(ChannelStatus, "DISABLED", object()):
             continue
         if channel.channel_status != ChannelStatus.OBSERVE:
             continue
@@ -139,7 +162,7 @@ async def resume_paused_channels() -> bool:
         core.logger.error(f"[频道接管] 清理暂停频道记录失败：{exc}")
         await _restore_channels(changed_channels, ChannelStatus.OBSERVE)
         return False
-    core.logger.info(f"[频道接管] 唤醒时恢复 {len(changed_channels)} 个频道")
+    core.logger.info(f"[频道接管] 唤醒时恢复 {len(changed_channels)} 个频道（模式：{mode}）")
     return True
 
 

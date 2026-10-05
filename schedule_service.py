@@ -58,8 +58,8 @@ async def update_global_physical_status(forced_state: ChatState | str | None = N
     if decision.target_state != previous_state:
         if decision.target_state == ChatState.SILENT:
             channels_ok = await pause_active_channels()
-        elif previous_state == ChatState.SILENT:
-            channels_ok = await resume_paused_channels()
+        elif decision.target_state in (ChatState.NORMAL, ChatState.LOW_ACT):
+            channels_ok = await resume_paused_channels(config.channel_resume_mode)
 
     if not channels_ok:
         await sync_online_status(previous_state, runtime_status.battery_status)

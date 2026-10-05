@@ -42,6 +42,8 @@ nekro_plugin_schedule/
 
 ## 配置
 
+`channel_resume_mode` 控制 NORMAL/LOW_ACT 时的频道恢复方式，默认值为 `managed`：只恢复插件在进入 SILENT 时记录的频道。设置为 `force` 时恢复所有非 DISABLED 频道，并清理已有的插件管理记录。
+
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |
 | `weekday_low_activity` | `10:00-17:00` | 工作日低活跃时段 |
