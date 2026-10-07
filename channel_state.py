@@ -62,13 +62,9 @@ async def pause_active_channels() -> ChannelSwitchResult:
         if isinstance(invalidation, bool):
             invalidation = DebounceInvalidationResult(True, invalidation)
         if not invalidation.success:
-            failed_keys.append(channel.chat_key)
-            core.logger.error(
-                f"[频道接管] 防抖失效未完成，跳过频道切换 chat_key={channel.chat_key} "
-                f"generation/批次数量={invalidation.batch_count} reason={invalidation.reason}",
-            )
-            continue
-        debounce_confirmed = debounce_confirmed and invalidation.confirmed
+            debounce_confirmed = False
+        else:
+            debounce_confirmed = debounce_confirmed and bool(invalidation.confirmed)
         try:
             is_active = channel.channel_status == ChannelStatus.ACTIVE
         except (RuntimeError, AttributeError) as exc:
@@ -105,7 +101,7 @@ async def pause_active_channels() -> ChannelSwitchResult:
         return ChannelSwitchResult(False, debounce_confirmed, (), tuple(active_keys))
     core.logger.info(f"[频道接管] 休眠时暂停 {len(active_keys)} 个频道")
     if not debounce_confirmed:
-        core.logger.warning("[频道接管] 频道已切换，但未确认所有防抖批次失效，存在 TOCTOU 边界")
+        core.logger.warning("[频道接管] 频道已切换，但部分防抖批次失效未确认")
     return ChannelSwitchResult(True, debounce_confirmed, tuple(active_keys))
 
 

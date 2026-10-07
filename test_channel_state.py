@@ -151,12 +151,12 @@ class ChannelStateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(calls, ["active-1"])
         self.assertEqual(first.channel_status, ChannelStatus.OBSERVE)
 
-    async def test_missing_entry_keeps_legacy_switch_unconfirmed(self):
+    async def test_missing_entry_keeps_switch_unconfirmed(self):
         channel = _Channel("active-1", ChannelStatus.ACTIVE)
         DBChatChannel.channels = [channel]
 
         async def missing(_chat_key):
-            return DebounceInvalidationResult(False, True, reason="missing")
+            return DebounceInvalidationResult(False, False, reason="missing", confirmed=False)
 
         channel_state.invalidate_debounce_channel = missing
         result = await channel_state.pause_active_channels()
@@ -164,7 +164,7 @@ class ChannelStateTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result.debounce_confirmed)
         self.assertEqual(channel.channel_status, ChannelStatus.OBSERVE)
 
-    async def test_invalidation_failure_rolls_back(self):
+    async def test_invalidation_failure_does_not_block_switch(self):
         first = _Channel("active-1", ChannelStatus.ACTIVE)
         second = _Channel("active-2", ChannelStatus.ACTIVE)
         DBChatChannel.channels = [first, second]
@@ -174,9 +174,10 @@ class ChannelStateTests(unittest.IsolatedAsyncioTestCase):
 
         channel_state.invalidate_debounce_channel = fail_second
         result = await channel_state.pause_active_channels()
-        self.assertFalse(result.success)
-        self.assertEqual(first.channel_status, ChannelStatus.ACTIVE)
-        self.assertEqual(plugin.store.set_calls, [])
+        self.assertTrue(result.success)
+        self.assertFalse(result.debounce_confirmed)
+        self.assertEqual(first.channel_status, ChannelStatus.OBSERVE)
+        self.assertEqual(second.channel_status, ChannelStatus.OBSERVE)
 
     async def test_partial_channel_failure_does_not_persist(self):
         first = _Channel("active-1", ChannelStatus.ACTIVE)
@@ -264,17 +265,8 @@ class ChannelStateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(plugin.store.set_calls, [])
 
     async def test_missing_debounce_plugin_is_optional(self):
-        original_import = debounce_bridge.importlib.import_module
-
-        def missing(_name):
-            raise ImportError("synthetic missing plugin")
-
-        debounce_bridge.importlib.import_module = missing
-        try:
-            result = await debounce_bridge.invalidate_debounce_channel("active-1")
-        finally:
-            debounce_bridge.importlib.import_module = original_import
-        self.assertTrue(result.success)
+        result = await debounce_bridge.invalidate_debounce_channel("active-1")
+        self.assertFalse(result.success)
         self.assertFalse(result.available)
         self.assertFalse(result.confirmed)
 

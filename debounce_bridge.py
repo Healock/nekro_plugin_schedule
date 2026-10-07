@@ -1,20 +1,14 @@
-"""可选的防抖频道失效适配。"""
+"""通过已加载插件注册表调用防抖频道失效能力。"""
 
 from __future__ import annotations
 
-import importlib
 import inspect
 from dataclasses import dataclass
 from typing import Any
 
-from nekro_agent.api import core
 
-
-_INVALIDATION_METHODS = (
-    "invalidate_channel",
-    "invalidate_chat",
-    "cancel_channel_pending",
-)
+DEBOUNCE_MODULE_NAME = "nekro_plugin_debounce"
+CAPABILITY_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -23,80 +17,82 @@ class DebounceInvalidationResult:
     success: bool
     batch_count: int | None = None
     reason: str = ""
+    confirmed: bool | None = None
 
-    @property
-    def confirmed(self) -> bool:
-        return self.available and self.success
-
-
-def _find_invalidation_method(module: Any) -> Any:
-    runtime = getattr(module, "runtime", None)
-    for owner in (runtime, module):
-        if owner is None:
-            continue
-        for name in _INVALIDATION_METHODS:
-            method = getattr(owner, name, None)
-            if callable(method):
-                return method
-    return None
+    def __post_init__(self) -> None:
+        if self.confirmed is None:
+            object.__setattr__(self, "confirmed", self.available and self.success)
 
 
-def _read_batch_count(result: Any) -> int | None:
-    if isinstance(result, bool):
-        return None
-    if isinstance(result, int):
-        return result
-    if isinstance(result, dict):
-        for key in ("batch_count", "generation_count", "canceled_count", "pending_count"):
-            value = result.get(key)
-            if isinstance(value, int):
-                return value
-    for key in ("batch_count", "generation_count", "canceled_count", "pending_count"):
-        value = getattr(result, key, None)
-        if isinstance(value, int):
-            return value
-    return None
+def _result_from_value(value: Any) -> DebounceInvalidationResult:
+    if isinstance(value, bool):
+        return DebounceInvalidationResult(available=True, success=value, reason="legacy_result")
 
+    def read(name: str, default: Any) -> Any:
+        if isinstance(value, dict):
+            return value.get(name, default)
+        return getattr(value, name, default)
 
-def _read_success(result: Any) -> bool:
-    if isinstance(result, bool):
-        return result
-    if isinstance(result, dict) and "success" in result:
-        return bool(result["success"])
-    success = getattr(result, "success", None)
-    return bool(success) if success is not None else True
+    return DebounceInvalidationResult(
+        available=bool(read("available", True)),
+        success=bool(read("success", False)),
+        batch_count=max(0, int(read("batch_count", 0) or 0)),
+        reason=str(read("reason", "") or ""),
+        confirmed=bool(read("confirmed", False)),
+    )
 
 
 async def invalidate_debounce_channel(chat_key: str) -> DebounceInvalidationResult:
-    """调用已加载防抖插件的幂等频道失效入口。"""
+    """调用已加载防抖插件的版本化频道失效能力。"""
 
     try:
-        module = importlib.import_module("nekro_plugin_debounce")
-    except (ImportError, RuntimeError, AttributeError) as exc:
-        core.logger.warning(f"[频道接管] 防抖插件不可用，未确认失效 chat_key={chat_key}：{exc}")
-        return DebounceInvalidationResult(False, True, reason="debounce_unavailable")
+        from nekro_agent.services.plugin.collector import plugin_collector
 
-    method = _find_invalidation_method(module)
-    if method is None:
-        core.logger.warning(f"[频道接管] 防抖插件缺少频道失效入口，未确认失效 chat_key={chat_key}")
-        return DebounceInvalidationResult(False, True, reason="invalidation_entry_missing")
+        debounce_plugin = plugin_collector.get_plugin_by_module_name(DEBOUNCE_MODULE_NAME)
+    except (ImportError, AttributeError, RuntimeError) as exc:
+        return DebounceInvalidationResult(
+            available=False,
+            success=False,
+            confirmed=False,
+            reason=f"registry_unavailable:{type(exc).__name__}",
+        )
+
+    if debounce_plugin is None:
+        return DebounceInvalidationResult(
+            available=False,
+            success=False,
+            confirmed=False,
+            reason="plugin_not_loaded",
+        )
+
+    bridge = getattr(debounce_plugin, "debounce_bridge", None)
+    method = getattr(bridge, "invalidate_channel", None)
+    version = getattr(bridge, "version", None)
+    if version != CAPABILITY_VERSION or not callable(method):
+        return DebounceInvalidationResult(
+            available=False,
+            success=False,
+            confirmed=False,
+            reason="capability_unavailable",
+        )
 
     try:
-        result = method(chat_key)
+        result = method(chat_key, "schedule_channel_switch")
         if inspect.isawaitable(result):
             result = await result
     except Exception as exc:
-        core.logger.warning(f"[频道接管] 防抖频道失效失败 chat_key={chat_key}：{exc}")
-        return DebounceInvalidationResult(True, False, reason=str(exc))
-
-    success = _read_success(result)
-    batch_count = _read_batch_count(result)
-    if not success:
-        core.logger.warning(
-            f"[频道接管] 防抖频道失效返回失败 chat_key={chat_key} generation/批次数量={batch_count}",
+        return DebounceInvalidationResult(
+            available=True,
+            success=False,
+            confirmed=False,
+            reason=f"invalidation_failed:{type(exc).__name__}",
         )
-        return DebounceInvalidationResult(True, False, batch_count, reason="invalidation_returned_false")
-    core.logger.info(
-        f"[频道接管] 防抖频道失效完成 chat_key={chat_key} generation/批次数量={batch_count}",
-    )
-    return DebounceInvalidationResult(True, True, batch_count)
+    try:
+        return _result_from_value(result)
+    except (TypeError, ValueError, AttributeError) as exc:
+        return DebounceInvalidationResult(
+            available=True,
+            success=False,
+            confirmed=False,
+            reason=f"invalid_result:{type(exc).__name__}",
+        )
