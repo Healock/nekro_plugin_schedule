@@ -72,6 +72,11 @@ async def update_global_physical_status(forced_state: ChatState | str | None = N
         core.logger.error(f"[全局巡检] 状态已同步，但频道切换未完成：{previous_state} -> {decision.target_state}")
         return False
 
+    if isinstance(channel_result, ChannelSwitchResult) and not channel_result.debounce_confirmed:
+        core.logger.warning(
+            f"[全局巡检] 频道已切换但防抖失效未完全确认：{decision.target_state}",
+        )
+
     runtime_status.current_state = decision.target_state
     runtime_status.battery_status = decision.battery_status
     runtime_status.last_sync_ts = now.timestamp()
