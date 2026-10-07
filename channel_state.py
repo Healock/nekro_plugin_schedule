@@ -9,6 +9,7 @@ from nekro_agent.models.db_chat_channel import DBChatChannel, ChannelStatus
 from tortoise.exceptions import BaseORMException
 
 from . import plugin
+from .debounce_bridge import invalidate_debounce_channel
 from .state_model import SLEEP_PAUSED_CHANNELS_KEY
 
 
@@ -34,7 +35,11 @@ async def pause_active_channels() -> bool:
 
     active_channels = [channel for channel in channels if channel.channel_status == ChannelStatus.ACTIVE]
     changed_channels: list[DBChatChannel] = []
+    unconfirmed_keys: list[str] = []
     for channel in active_channels:
+        invalidation = await invalidate_debounce_channel(channel.chat_key)
+        if not invalidation.confirmed:
+            unconfirmed_keys.append(channel.chat_key)
         try:
             await channel.set_channel_status(ChannelStatus.OBSERVE)
         except (BaseORMException, ValueError, RuntimeError, AttributeError) as exc:
@@ -59,6 +64,11 @@ async def pause_active_channels() -> bool:
         await _restore_channels(changed_channels, ChannelStatus.ACTIVE)
         return False
     core.logger.info(f"[频道接管] 休眠时暂停 {len(active_keys)} 个频道")
+    if unconfirmed_keys:
+        core.logger.warning(
+            f"[频道接管] 已切换频道，但防抖批次失效未确认：{len(unconfirmed_keys)} 个；"
+            f"示例 chat_key={unconfirmed_keys[0]}",
+        )
     return True
 
 

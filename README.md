@@ -1,6 +1,6 @@
 # NekroAgent 作息调度器
 
-版本：`1.0.7`
+版本：`1.0.8`
 
 > 根据配置的时间段调整 Agent 的在线状态，并在休眠时切换频道观察模式。
 
@@ -22,6 +22,7 @@ nekro_plugin_schedule/
 ├── state_model.py      # 频道状态和运行时状态模型
 ├── schedule_calc.py    # 时间段解析与状态计算
 ├── channel_state.py    # 频道 ACTIVE/OBSERVE 状态管理
+├── debounce_bridge.py   # 防抖插件频道失效能力桥接
 ├── online_status.py    # OneBot 在线状态同步
 ├── schedule_service.py # 全局巡检服务
 ├── prompts.py          # 作息状态提示词
@@ -39,6 +40,7 @@ nekro_plugin_schedule/
 - 通过手动命令唤醒或进入休眠。
 - 进入新的活跃时段后，自动解除此前的休眠状态。
 - 进程重启或插件热重载后，会根据持久化的暂停频道记录恢复休眠前由插件切换的频道状态。
+- 休眠切换前会通过已加载插件注册表调用防抖插件的频道失效能力；防抖插件未安装或协议不兼容时，频道仍会切换，但会汇总记录未确认风险。
 
 ## 配置
 
