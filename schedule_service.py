@@ -4,7 +4,7 @@ from datetime import datetime
 from nekro_agent.api import core
 
 from . import config, plugin
-from .channel_state import pause_active_channels, resume_paused_channels
+from .channel_state import ChannelSwitchResult, pause_active_channels, resume_paused_channels
 from .online_status import sync_online_status
 from .schedule_calc import calculate_schedule
 from .state_model import FORCE_AWAKE_DATE_KEY, LAST_SLEEP_DATE_KEY, ChatState, RuntimeStatus
@@ -45,7 +45,7 @@ async def update_global_physical_status(forced_state: ChatState | str | None = N
     previous_state = runtime_status.current_state
     should_sync = (
         decision.target_state != previous_state
-        or now.timestamp() - runtime_status.last_sync_ts >= max(1, config.status_sync_interval)
+        or now.timestamp() - runtime_status.last_sync_ts > 300
         or forced_state is not None
     )
     if not should_sync:
@@ -54,16 +54,21 @@ async def update_global_physical_status(forced_state: ChatState | str | None = N
     if not await sync_online_status(decision.target_state, decision.battery_status):
         return False
 
-    channels_ok = True
-    if decision.target_state == ChatState.SILENT:
-        if decision.target_state != previous_state:
-            channels_ok = await pause_active_channels()
-    else:
-        # 频道暂停记录持久化于插件存储，不能依赖重启后丢失的进程内状态。
-        channels_ok = await resume_paused_channels()
+    channel_result: ChannelSwitchResult | bool | None = None
+    if decision.target_state == ChatState.SILENT and decision.target_state != previous_state:
+        channel_result = await pause_active_channels()
+    elif decision.target_state in (ChatState.NORMAL, ChatState.LOW_ACT):
+        # 每次巡检同步时都修复残留 OBSERVE，覆盖重启、手动切换和 force 扫描。
+        channel_result = await resume_paused_channels(config.channel_resume_mode)
 
-    if not channels_ok:
-        await sync_online_status(previous_state, runtime_status.battery_status)
+    channel_success = (
+        channel_result.success
+        if isinstance(channel_result, ChannelSwitchResult)
+        else bool(channel_result)
+    )
+    if channel_result is not None and not channel_success:
+        if not await sync_online_status(previous_state, runtime_status.battery_status):
+            core.logger.error(f"[全局巡检] 状态回滚失败：{previous_state}")
         core.logger.error(f"[全局巡检] 状态已同步，但频道切换未完成：{previous_state} -> {decision.target_state}")
         return False
 

@@ -8,7 +8,7 @@ plugin = NekroPlugin(
     name="作息调度器",
     module_name="nekro_plugin_schedule",
     description="根据时间段调整在线状态，并在休眠时切换频道观察模式。",
-    version="1.0.8",
+    version="1.1.1",
     author="Healock",
     url="https://github.com/Healock/nekro_plugin_schedule",
 )
@@ -20,7 +20,7 @@ class ChatScheduleConfig(ConfigBase):
     weekday_active: str = Field(default="10:00-21:30", title="工作日活跃时段")
     weekend_active: str = Field(default="08:00-23:00", title="周末活跃时段")
     patrol_interval: int = Field(default=60, title="全局巡检间隔（秒）")
-    status_sync_interval: int = Field(default=60, title="在线状态刷新间隔（秒）")
+    channel_resume_mode: str = Field(default="managed", title="频道恢复模式（managed/force）")
     hint_low_activity: str = Field(default="当前处于低活跃时段，回复可简短。", title="提示词：低活跃状态")
     hint_transition: str = Field(default="接近休息时段，可在适当时调用 go_to_sleep。", title="提示词：休息状态")
 

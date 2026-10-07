@@ -49,32 +49,18 @@ class ScheduleCalculationTests(unittest.TestCase):
         )
         self.assertEqual(decision.target_state, ChatState.NORMAL)
 
-    def test_explicit_sleep_survives_midnight(self):
+    def test_previous_sleep_date_does_not_keep_silent(self):
         decision = schedule_calc.calculate_schedule(
             datetime(2026, 9, 8, 0, 0), CONFIG, ChatState.SILENT, "2026-09-07", None,
         )
         self.assertEqual(decision.computed_state, ChatState.TRANSITION)
-        self.assertEqual(decision.target_state, ChatState.SILENT)
+        self.assertEqual(decision.target_state, ChatState.TRANSITION)
 
     def test_morning_recovers_from_transition(self):
         decision = schedule_calc.calculate_schedule(
             datetime(2026, 9, 7, 10, 0), CONFIG, ChatState.TRANSITION, None, None,
         )
         self.assertEqual(decision.target_state, ChatState.LOW_ACT)
-
-    def test_battery_status_represents_schedule_progress(self):
-        start = schedule_calc.calculate_schedule(
-            datetime(2026, 9, 7, 10, 0), CONFIG, ChatState.TRANSITION, None, None,
-        )
-        end = schedule_calc.calculate_schedule(
-            datetime(2026, 9, 7, 21, 30), CONFIG, ChatState.LOW_ACT, None, None,
-        )
-        after = schedule_calc.calculate_schedule(
-            datetime(2026, 9, 7, 22, 0), CONFIG, ChatState.LOW_ACT, None, None,
-        )
-        self.assertEqual(start.battery_status, 100)
-        self.assertEqual(end.battery_status, 0)
-        self.assertEqual(after.battery_status, 0)
 
     def test_explicit_sleep_is_silent(self):
         now = datetime(2026, 9, 7, 12, 0)

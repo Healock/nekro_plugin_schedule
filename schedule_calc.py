@@ -87,10 +87,6 @@ def calculate_schedule(
         target_state = ChatState(forced_state)
     elif persisted_sleep_date == today and computed_state == ChatState.TRANSITION:
         target_state = ChatState.SILENT
-    elif current_state == ChatState.SILENT and computed_state == ChatState.TRANSITION:
-        target_state = ChatState.SILENT
-    elif computed_state == ChatState.TRANSITION:
-        target_state = ChatState.TRANSITION
     else:
         target_state = computed_state
 
