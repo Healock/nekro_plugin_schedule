@@ -57,7 +57,8 @@ nekro_plugin_schedule/
 ## 命令与沙盒方法
 
 - `wake_up`：高级管理命令，清除当日休眠标记并唤醒系统。OneBot 用户需要具备高级命令权限；不要求加入全局超级用户列表。
-- `go_to_sleep`：在允许的临界状态且保护期结束后进入休眠。
+- `/go_to_sleep`：高级管理员命令，无视当前作息状态和保护期，直接进入休眠。
+- `go_to_sleep`：Agent 行为工具，仅在 `TRANSITION` 状态且保护期结束后进入休眠。
 - `adjust_sleep_time`：延后指定分钟数后再进入休眠。
 - `chat_schedule_prompt`：向 Agent 提供当前作息和保护期信息。
 

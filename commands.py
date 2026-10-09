@@ -9,14 +9,15 @@ from .schedule_service import runtime_status, update_global_physical_status
 from .state_model import FORCE_AWAKE_DATE_KEY, LAST_SLEEP_DATE_KEY, ChatState
 
 
-async def _enter_sleep() -> str:
+async def _enter_sleep(*, force: bool = False) -> str:
     """执行休眠前置检查、持久化和全局状态切换。"""
 
-    if runtime_status.current_state != ChatState.TRANSITION:
-        raise RuntimeError("当前不在可休眠状态。")
-    remaining = runtime_status.protection_until - time.time()
-    if remaining > 0:
-        raise RuntimeError(f"当前处于保护期，还剩 {int(remaining / 60)} 分钟。")
+    if not force:
+        if runtime_status.current_state != ChatState.TRANSITION:
+            raise RuntimeError("当前不在可休眠状态。")
+        remaining = runtime_status.protection_until - time.time()
+        if remaining > 0:
+            raise RuntimeError(f"当前处于保护期，还剩 {int(remaining / 60)} 分钟。")
 
     previous_sleep_date = await plugin.store.get(
         chat_key="GLOBAL", user_key="", store_key=LAST_SLEEP_DATE_KEY
@@ -87,7 +88,7 @@ async def go_to_sleep_command(context: CommandExecutionContext) -> CommandRespon
 
     del context
     try:
-        return CmdCtl.success(await _enter_sleep())
+        return CmdCtl.success(await _enter_sleep(force=True))
     except Exception as exc:
         return CmdCtl.failed(f"休眠未完成：{exc}")
 
