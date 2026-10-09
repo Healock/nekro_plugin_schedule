@@ -9,6 +9,32 @@ from .schedule_service import runtime_status, update_global_physical_status
 from .state_model import FORCE_AWAKE_DATE_KEY, LAST_SLEEP_DATE_KEY, ChatState
 
 
+async def _enter_sleep() -> str:
+    """执行休眠前置检查、持久化和全局状态切换。"""
+
+    if runtime_status.current_state != ChatState.TRANSITION:
+        raise RuntimeError("当前不在可休眠状态。")
+    remaining = runtime_status.protection_until - time.time()
+    if remaining > 0:
+        raise RuntimeError(f"当前处于保护期，还剩 {int(remaining / 60)} 分钟。")
+
+    previous_sleep_date = await plugin.store.get(
+        chat_key="GLOBAL", user_key="", store_key=LAST_SLEEP_DATE_KEY
+    )
+    await plugin.store.set(
+        chat_key="GLOBAL",
+        user_key="",
+        store_key=LAST_SLEEP_DATE_KEY,
+        value=datetime.now().strftime("%Y-%m-%d"),
+    )
+    if not await update_global_physical_status(forced_state=ChatState.SILENT):
+        await plugin.store.set(
+            chat_key="GLOBAL", user_key="", store_key=LAST_SLEEP_DATE_KEY, value=previous_sleep_date or ""
+        )
+        raise RuntimeError("在线状态或频道状态同步失败。")
+    return "已进入休眠状态。"
+
+
 @plugin.mount_command(
     name="wake_up",
     description="手动唤醒",
@@ -49,6 +75,23 @@ async def wake_up(context: CommandExecutionContext) -> CommandResponse:
     return CmdCtl.success("已唤醒并清除今日休眠状态。")
 
 
+@plugin.mount_command(
+    name="go_to_sleep",
+    description="手动进入休眠",
+    aliases=["sleep"],
+    permission=CommandPermission.ADVANCED,
+    category="行为控制",
+)
+async def go_to_sleep_command(context: CommandExecutionContext) -> CommandResponse:
+    """通过命令入口执行与行为工具相同的休眠流程。"""
+
+    del context
+    try:
+        return CmdCtl.success(await _enter_sleep())
+    except Exception as exc:
+        return CmdCtl.failed(f"休眠未完成：{exc}")
+
+
 @plugin.mount_sandbox_method(
     SandboxMethodType.BEHAVIOR,
     name="go_to_sleep",
@@ -67,27 +110,7 @@ async def go_to_sleep(_ctx: AgentCtx) -> str:
         RuntimeError: 当前不在可休眠状态、仍处于保护期，或状态同步失败。
     """
 
-    if runtime_status.current_state != ChatState.TRANSITION:
-        raise RuntimeError("当前不在可休眠状态。")
-    remaining = runtime_status.protection_until - time.time()
-    if remaining > 0:
-        raise RuntimeError(f"当前处于保护期，还剩 {int(remaining / 60)} 分钟。")
-
-    previous_sleep_date = await plugin.store.get(
-        chat_key="GLOBAL", user_key="", store_key=LAST_SLEEP_DATE_KEY
-    )
-    await plugin.store.set(
-        chat_key="GLOBAL",
-        user_key="",
-        store_key=LAST_SLEEP_DATE_KEY,
-        value=datetime.now().strftime("%Y-%m-%d"),
-    )
-    if not await update_global_physical_status(forced_state=ChatState.SILENT):
-        await plugin.store.set(
-            chat_key="GLOBAL", user_key="", store_key=LAST_SLEEP_DATE_KEY, value=previous_sleep_date or ""
-        )
-        raise RuntimeError("在线状态或频道状态同步失败。")
-    return "已进入休眠状态。"
+    return await _enter_sleep()
 
 
 @plugin.mount_sandbox_method(
